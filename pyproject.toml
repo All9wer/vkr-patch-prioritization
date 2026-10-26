@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Рекомендательная система приоритизации патч-менеджмента (ВКР, МИРЭА)"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "Чирков Илья Алексеевич" }]
+authors = [{ name = "All9wer" }]
 dependencies = [
     "pandas>=2.0",
     "numpy>=1.24",
