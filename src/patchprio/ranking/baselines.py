@@ -6,6 +6,10 @@
 * EpssRanker: сортировка по вероятности эксплуатации EPSS на дату
   среза. Более сильный конкурент: модель, которая уже учитывает
   внешние признаки эксплуатации, но не знает контекста инфраструктуры.
+* FstecRanker: уровень критичности V по методике ФСТЭК. Отечественный
+  регламент: учитывает CVSS, наличие эксплойта и тип последствий.
+  Показатель инфраструктуры одинаков для всех уязвимостей среза и на
+  порядок не влияет, поэтому здесь не используется.
 """
 
 from __future__ import annotations
@@ -13,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
+
+from ..fstec import fstec_scores
 
 
 @dataclass(frozen=True)
@@ -51,3 +57,15 @@ class EpssRanker:
 
     def score(self, df: pd.DataFrame) -> pd.Series:
         return df["epss"].astype(float)
+
+
+@dataclass(frozen=True)
+class FstecRanker:
+    name: str = "Методика ФСТЭК"
+
+    @property
+    def required_columns(self) -> tuple[str, ...]:
+        return ("cvss_score",)
+
+    def score(self, df: pd.DataFrame) -> pd.Series:
+        return fstec_scores(df)

@@ -6,6 +6,6 @@
 """
 
 from .base import Ranker
-from .baselines import CvssRanker, EpssRanker, RandomRanker
+from .baselines import CvssRanker, EpssRanker, FstecRanker, RandomRanker
 
-__all__ = ["Ranker", "RandomRanker", "CvssRanker", "EpssRanker"]
+__all__ = ["Ranker", "RandomRanker", "CvssRanker", "EpssRanker", "FstecRanker"]

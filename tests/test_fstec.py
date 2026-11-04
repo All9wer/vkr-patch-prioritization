@@ -69,3 +69,56 @@ def test_assign_consequences(mapping):
     assert pd.isna(df.loc["E", "consequence"])
     assert df.loc["E", "consequence_source"] == "не определён"
     assert df["consequence_source"].tolist() == ["CWE", "CWE", "CVSS", "CVSS", "не определён"]
+
+
+# --- Формула критичности ---------------------------------------------------
+
+from patchprio.fstec import InfraProfile, criticality, fstec_scores, level  # noqa: E402
+
+
+def test_methodology_example_1():
+    # Пример 1 методики: межсетевой экран, 10-50% узлов, из интернета,
+    # CVSS 8.8, эксплойта нет, повышение привилегий
+    infra = InfraProfile(component="firewall", share="10-50", internet=True)
+    assert infra.i_infr == pytest.approx(0.9)
+    v = criticality(8.8, 0.1, 0.5, infra.i_infr)
+    assert v == pytest.approx(4.752)
+    assert level(v) == "Средний"
+
+
+def test_methodology_example_2():
+    # Пример 2: компоненты важных процессов, >70% узлов, из интернета,
+    # CVSS 9.8, эксплуатируется в атаках, выполнение кода
+    infra = InfraProfile(component="critical_process", share=">70", internet=True)
+    assert infra.i_infr == pytest.approx(1.08)
+    v = criticality(9.8, 0.6, 0.5, infra.i_infr)
+    assert v == pytest.approx(11.6424)
+    assert level(v) == "Критический"
+
+
+def test_level_boundaries():
+    assert level(8.01) == "Критический"
+    assert level(8.0) == "Высокий"
+    assert level(5.0) == "Высокий"
+    assert level(4.99) == "Средний"
+    assert level(2.0) == "Средний"
+    assert level(1.99) == "Низкий"
+    assert level(float("nan")) is None
+
+
+def test_fstec_scores_uses_exploit_and_h():
+    df = pd.DataFrame({
+        "cvss_score": [9.8, 9.8, 5.0],
+        "has_exploit": [1, 0, 0],
+        "fstec_h": [0.5, 0.5, None],
+    })
+    v = fstec_scores(df).tolist()
+    assert v[0] == pytest.approx(9.8 * (0.3 + 0.5))
+    assert v[1] == pytest.approx(9.8 * (0.1 + 0.5))
+    # Тип последствия не определён: H = 0
+    assert v[2] == pytest.approx(5.0 * 0.1)
+
+
+def test_fstec_scores_without_exploit_column():
+    df = pd.DataFrame({"cvss_score": [7.0], "fstec_h": [0.3]})
+    assert fstec_scores(df).iloc[0] == pytest.approx(7.0 * (0.1 + 0.3))
