@@ -21,6 +21,7 @@ from ..collectors import metasploit as msf_src
 from ..collectors import nvd as nvd_src
 from ..config import ExperimentConfig
 from ..dataset import SnapshotSpec, build_snapshot
+from ..fstec import assign_consequences, load_cwe_mapping
 from ..ranking import CvssRanker, EpssRanker, RandomRanker, Ranker
 from .metrics import (
     budget_metrics,
@@ -40,6 +41,8 @@ class ExperimentResult:
     efforts: pd.DataFrame
     policies: pd.DataFrame
     exploits: pd.DataFrame = field(default_factory=pd.DataFrame)
+    consequences: pd.DataFrame = field(default_factory=pd.DataFrame)
+    consequence_sources: pd.DataFrame = field(default_factory=pd.DataFrame)
     curves: dict[str, list[tuple[np.ndarray, np.ndarray]]] = field(default_factory=dict)
     kev_version: str | None = None
 
@@ -123,6 +126,32 @@ def exploit_stats(df: pd.DataFrame) -> list[dict]:
     return rows
 
 
+def consequence_stats(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
+    """Распределение типов последствий среди атакованных и остальных,
+    и каким способом определён тип (CWE, CVSS или не определён)."""
+    if "consequence" not in df:
+        return [], []
+    snap = df.attrs["snapshot"]
+    attacked = df["exploited"] == 1
+    kinds = df["consequence"].fillna("не определён")
+
+    by_type = []
+    for kind in kinds.unique():
+        is_kind = kinds == kind
+        by_type.append({
+            "snapshot": snap,
+            "consequence": kind,
+            "h": df.loc[is_kind, "fstec_h"].iloc[0],
+            "share_attacked": float(is_kind[attacked].mean()) if attacked.any() else np.nan,
+            "share_not_attacked": float(is_kind[~attacked].mean()) if (~attacked).any() else np.nan,
+        })
+    by_source = [
+        {"snapshot": snap, "source": src, "share": float(share)}
+        for src, share in df["consequence_source"].value_counts(normalize=True).items()
+    ]
+    return by_type, by_source
+
+
 def load_exploits(cfg: ExperimentConfig) -> dict[str, pd.DataFrame]:
     """Загружает даты эксплойтов из тех источников, что скачаны."""
     raw = cfg.raw_dir
@@ -150,6 +179,10 @@ def load_sources(cfg: ExperimentConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
     if not existing:
         raise FileNotFoundError("фиды NVD не скачаны, запустите `patchprio fetch`")
     nvd = nvd_src.load_nvd(existing)
+    if cfg.cwe_consequences.exists():
+        nvd = assign_consequences(nvd, load_cwe_mapping(cfg.cwe_consequences))
+    else:
+        log.warning("нет таблицы %s, последствия по ФСТЭК не определяются", cfg.cwe_consequences)
     return nvd, kev
 
 
@@ -186,5 +219,11 @@ def run_experiment(cfg: ExperimentConfig, rankers: list[Ranker] | None = None) -
         stats = exploit_stats(df)
         if stats:
             result.exploits = pd.concat([result.exploits, pd.DataFrame(stats)], ignore_index=True)
+        by_type, by_source = consequence_stats(df)
+        if by_type:
+            result.consequences = pd.concat(
+                [result.consequences, pd.DataFrame(by_type)], ignore_index=True)
+            result.consequence_sources = pd.concat(
+                [result.consequence_sources, pd.DataFrame(by_source)], ignore_index=True)
 
     return result

@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 from .experiment import ExperimentResult  # noqa: E402
 
@@ -94,6 +95,8 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
     result.policies.to_csv(results_dir / "policy_metrics.csv", index=False)
     if not result.exploits.empty:
         result.exploits.to_csv(results_dir / "exploit_stats.csv", index=False)
+    if not result.consequences.empty:
+        result.consequences.to_csv(results_dir / "consequence_stats.csv", index=False)
     plot_coverage(result, results_dir / "coverage_curve.png")
 
     snaps = result.snapshots
@@ -202,6 +205,29 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
                          "н/д" if np.isnan(ratio) else f"в {ratio:.1f} раза"])
         lines.append(_md_table(
             ["Источник", "Среди атакованных", "Среди остальных", "Разница"], rows))
+        lines.append("")
+
+    if not result.consequences.empty:
+        src = result.consequence_sources.groupby("source")["share"].sum() / len(snaps)
+        cons = (result.consequences
+                .groupby(["consequence", "h"], dropna=False)[["share_attacked", "share_not_attacked"]]
+                .sum() / len(snaps))
+        cons = cons.reset_index().sort_values("h", ascending=False, na_position="last")
+
+        lines.append("## Последствия по методике ФСТЭК\n")
+        lines.append(
+            "Тип последствия (показатель H, таблица 1 методики) определяется по типу "
+            "слабости CWE, а если CWE не сопоставлен, по вектору CVSS. "
+            "Таблица сопоставления: `config/fstec_cwe_consequences.csv`.\n"
+        )
+        lines.append("Как определён тип: " + ", ".join(
+            f"{name} {_pct(src.get(name, 0.0))}" for name in ("CWE", "CVSS", "не определён")) + ".\n")
+        rows = [
+            [r["consequence"], "н/д" if pd.isna(r["h"]) else f"{r['h']:g}",
+             _pct(r["share_attacked"]), _pct(r["share_not_attacked"])]
+            for _, r in cons.iterrows()
+        ]
+        lines.append(_md_table(["Последствие", "H", "Среди атакованных", "Среди остальных"], rows))
         lines.append("")
 
     lines.append("## Кривая покрытия\n")

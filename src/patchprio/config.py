@@ -19,6 +19,7 @@ class ExperimentConfig:
     coverage_targets: list[float] = field(default_factory=lambda: [0.5, 0.8])
     cvss_policies: list[float] = field(default_factory=lambda: [7.0, 9.0])
     llm_provider: str = "none"
+    cwe_consequences: Path = Path("config/fstec_cwe_consequences.csv")
 
     def nvd_years(self) -> list[int]:
         """Годы фидов NVD, которые нужны для всех срезов.
@@ -40,6 +41,7 @@ def load_config(path: str | Path) -> ExperimentConfig:
     exp = raw.get("experiment", {})
     data = raw.get("data", {})
     llm = raw.get("llm", {})
+    fstec = raw.get("fstec", {})
 
     return ExperimentConfig(
         raw_dir=Path(data.get("raw_dir", "data/raw")),
@@ -51,4 +53,5 @@ def load_config(path: str | Path) -> ExperimentConfig:
         coverage_targets=[float(t) for t in exp.get("coverage_targets", [0.5, 0.8])],
         cvss_policies=[float(t) for t in exp.get("cvss_policies", [7.0, 9.0])],
         llm_provider=str(llm.get("provider", "none")),
+        cwe_consequences=Path(fstec.get("cwe_consequences", "config/fstec_cwe_consequences.csv")),
     )

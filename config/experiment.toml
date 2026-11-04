@@ -29,6 +29,11 @@ cvss_policies = [7.0, 9.0]
 
 results_dir = "experiments/results"
 
+[fstec]
+# Таблица сопоставления типа слабости CWE и типа последствия
+# по методике ФСТЭК (показатель H)
+cwe_consequences = "config/fstec_cwe_consequences.csv"
+
 [llm]
 # Провайдер языковой модели. Пока "none": интеллектуальный слой
 # заложен архитектурно (src/patchprio/llm), но не подключён.
