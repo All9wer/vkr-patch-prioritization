@@ -20,7 +20,8 @@ COLORS = {
     "Случайный порядок": "#8a8a85",
     "CVSS": "#2a78d6",
     "EPSS": "#eb6834",
-    "Разрабатываемая модель": "#1baf7a",
+    "Методика ФСТЭК": "#1baf7a",
+    "Разрабатываемая модель": "#eda100",
 }
 SURFACE = "#fcfcfb"
 TEXT = "#2b2b29"
@@ -44,27 +45,38 @@ def plot_coverage(result: ExperimentResult, path: Path, x_max: float = 0.6) -> N
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
 
+    ends = []
     for name, curves in result.curves.items():
         mean = np.mean([np.interp(grid, x, y) for x, y in curves], axis=0)
         style = "--" if name == "Случайный порядок" else "-"
         color = COLORS.get(name, TEXT)
         ax.plot(grid * 100, mean * 100, style, color=color, linewidth=2, label=name)
-        ax.annotate(
-            name, (grid[-1] * 100, mean[-1] * 100), xytext=(6, 0),
-            textcoords="offset points", va="center", color=TEXT, fontsize=9,
-        )
+        ends.append([mean[-1] * 100, name])
+
+    # Подписи на конце линий: раздвигаем, чтобы не наезжали друг на друга
+    ends.sort()
+    min_gap = 4.5
+    for i in range(1, len(ends)):
+        ends[i][0] = max(ends[i][0], ends[i - 1][0] + min_gap)
+    for y, name in ends:
+        ax.annotate(name, (grid[-1] * 100, y), xytext=(6, 0), textcoords="offset points",
+                    va="center", color=TEXT, fontsize=9, annotation_clip=False)
 
     if not result.policies.empty:
         pol = result.policies.groupby("policy")[["effort_share", "coverage"]].mean()
         for policy, row in pol.iterrows():
-            if row["effort_share"] > x_max:
+            # Правило, которое почти ничего не отбирает, на графике не видно
+            if row["effort_share"] > x_max or row["effort_share"] < 0.005:
                 continue
+            color = COLORS["Методика ФСТЭК"] if policy.startswith("ФСТЭК") else COLORS["CVSS"]
             ax.plot(row["effort_share"] * 100, row["coverage"] * 100, "o",
-                    markersize=8, color=COLORS["CVSS"], markeredgecolor=SURFACE,
+                    markersize=8, color=color, markeredgecolor=SURFACE,
                     markeredgewidth=2, zorder=5)
+            # Подпись ниже и правее точки; у правого края, где линии сходятся, выше и левее
+            right_edge = row["effort_share"] > 0.8 * x_max
             ax.annotate(policy, (row["effort_share"] * 100, row["coverage"] * 100),
-                        xytext=(-10, 8), textcoords="offset points", ha="right",
-                        color=MUTED, fontsize=8)
+                        xytext=(-10, 10) if right_edge else (8, -14), textcoords="offset points",
+                        ha="right" if right_edge else "left", color=MUTED, fontsize=8)
 
     ax.set_xlim(0, x_max * 100)
     ax.set_ylim(0, 100)
@@ -178,8 +190,17 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
 
     if not result.policies.empty:
         p = result.policies.groupby("policy")[["effort_share", "coverage", "efficiency"]].mean()
-        lines.append("## Пороговые политики CVSS\n")
-        lines.append("Типовая практика \"устраняем всё выше порога\".\n")
+        lines.append("## Пороговые политики\n")
+        lines.append(
+            "Типовая практика \"устраняем всё выше порога\": по баллу CVSS и по уровню "
+            "критичности методики ФСТЭК.\n"
+        )
+        if result.infra_description:
+            lines.append(
+                "Уровни ФСТЭК зависят от показателя инфраструктуры, поэтому посчитаны для "
+                f"типового профиля: {result.infra_description}. Профиль задаётся в "
+                "`config/experiment.toml`.\n"
+            )
         lines.append(_md_table(
             ["Политика", "Доля устраняемых", "Покрытие", "Эффективность"],
             [[pol, _pct(r["effort_share"]), _pct(r["coverage"]), _pct(r["efficiency"])]
@@ -237,8 +258,9 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
     lines.append(
         "Чем выше и левее кривая, тем лучше способ: при меньшем объёме работ "
         "он закрывает больше реально эксплуатируемых уязвимостей. Разрабатываемая "
-        "модель должна превзойти обе базовые линии: CVSS как распространённую "
-        "практику и EPSS как наиболее сильный открытый аналог.\n"
+        "модель должна превзойти базовые линии: CVSS как распространённую "
+        "практику, методику ФСТЭК как отечественный регламент и EPSS как наиболее "
+        "сильный открытый аналог.\n"
     )
     lines.append("## Ограничения\n")
     lines.append(

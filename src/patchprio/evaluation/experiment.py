@@ -21,8 +21,8 @@ from ..collectors import metasploit as msf_src
 from ..collectors import nvd as nvd_src
 from ..config import ExperimentConfig
 from ..dataset import SnapshotSpec, build_snapshot
-from ..fstec import assign_consequences, load_cwe_mapping
-from ..ranking import CvssRanker, EpssRanker, RandomRanker, Ranker
+from ..fstec import assign_consequences, fstec_scores, level, load_cwe_mapping
+from ..ranking import CvssRanker, EpssRanker, FstecRanker, RandomRanker, Ranker
 from .metrics import (
     budget_metrics,
     coverage_curve,
@@ -45,10 +45,18 @@ class ExperimentResult:
     consequence_sources: pd.DataFrame = field(default_factory=pd.DataFrame)
     curves: dict[str, list[tuple[np.ndarray, np.ndarray]]] = field(default_factory=dict)
     kev_version: str | None = None
+    infra_description: str | None = None
+
+
+FSTEC_POLICIES = [
+    ("ФСТЭК: критический", {"Критический"}),
+    ("ФСТЭК: критический и высокий", {"Критический", "Высокий"}),
+    ("ФСТЭК: средний и выше", {"Критический", "Высокий", "Средний"}),
+]
 
 
 def default_rankers() -> list[Ranker]:
-    return [RandomRanker(), CvssRanker(), EpssRanker()]
+    return [RandomRanker(), CvssRanker(), EpssRanker(), FstecRanker()]
 
 
 def _ranker_applicable(ranker: Ranker, df: pd.DataFrame) -> bool:
@@ -94,6 +102,14 @@ def evaluate_snapshot(
         row = policy_metrics(df["cvss_score"] >= threshold, labels)
         row.update({"snapshot": snap, "policy": f"CVSS >= {threshold:g}"})
         result.policies = pd.concat([result.policies, pd.DataFrame([row])], ignore_index=True)
+
+    # Правила по уровням критичности ФСТЭК для типового профиля инфраструктуры
+    if "fstec_h" in df:
+        levels = fstec_scores(df, cfg.infra.i_infr).map(level)
+        for name, included in FSTEC_POLICIES:
+            row = policy_metrics(levels.isin(included), labels)
+            row.update({"snapshot": snap, "policy": name})
+            result.policies = pd.concat([result.policies, pd.DataFrame([row])], ignore_index=True)
 
 
 EXPLOIT_LABELS = {
@@ -200,6 +216,7 @@ def run_experiment(cfg: ExperimentConfig, rankers: list[Ranker] | None = None) -
         efforts=pd.DataFrame(),
         policies=pd.DataFrame(),
         kev_version=kev.attrs.get("catalog_version"),
+        infra_description=cfg.infra.describe(),
     )
 
     for day in cfg.snapshots:

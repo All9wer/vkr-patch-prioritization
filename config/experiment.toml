@@ -34,6 +34,16 @@ results_dir = "experiments/results"
 # по методике ФСТЭК (показатель H)
 cwe_consequences = "config/fstec_cwe_consequences.csv"
 
+# Типовой профиль инфраструктуры для уровней критичности по методике.
+# На порядок в очереди не влияет, только на то, какие уязвимости
+# попадут в "критический", "высокий" и т.д.
+# component: critical_process, firewall, network, telecom, server,
+#            workstation, storage, other
+# share: ">70", "50-70", "10-50", "<10" (доля уязвимых узлов)
+infra_component = "server"
+infra_share = "10-50"
+infra_internet = true
+
 [llm]
 # Провайдер языковой модели. Пока "none": интеллектуальный слой
 # заложен архитектурно (src/patchprio/llm), но не подключён.

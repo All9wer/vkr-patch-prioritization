@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from .fstec.criticality import COMPONENT, SHARE, InfraProfile
+
 
 @dataclass(frozen=True)
 class ExperimentConfig:
@@ -20,6 +22,7 @@ class ExperimentConfig:
     cvss_policies: list[float] = field(default_factory=lambda: [7.0, 9.0])
     llm_provider: str = "none"
     cwe_consequences: Path = Path("config/fstec_cwe_consequences.csv")
+    infra: InfraProfile = field(default_factory=InfraProfile)
 
     def nvd_years(self) -> list[int]:
         """Годы фидов NVD, которые нужны для всех срезов.
@@ -43,6 +46,16 @@ def load_config(path: str | Path) -> ExperimentConfig:
     llm = raw.get("llm", {})
     fstec = raw.get("fstec", {})
 
+    infra = InfraProfile(
+        component=str(fstec.get("infra_component", "server")),
+        share=str(fstec.get("infra_share", "10-50")),
+        internet=bool(fstec.get("infra_internet", True)),
+    )
+    if infra.component not in COMPONENT:
+        raise ValueError(f"[fstec] infra_component: допустимо {', '.join(COMPONENT)}")
+    if infra.share not in SHARE:
+        raise ValueError(f"[fstec] infra_share: допустимо {', '.join(SHARE)}")
+
     return ExperimentConfig(
         raw_dir=Path(data.get("raw_dir", "data/raw")),
         results_dir=Path(exp.get("results_dir", "experiments/results")),
@@ -54,4 +67,5 @@ def load_config(path: str | Path) -> ExperimentConfig:
         cvss_policies=[float(t) for t in exp.get("cvss_policies", [7.0, 9.0])],
         llm_provider=str(llm.get("provider", "none")),
         cwe_consequences=Path(fstec.get("cwe_consequences", "config/fstec_cwe_consequences.csv")),
+        infra=infra,
     )
