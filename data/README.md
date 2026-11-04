@@ -15,6 +15,9 @@ data/raw/
   kev.json
   nvd/CVE-2019.json.xz ... CVE-2023.json.xz
   epss/epss_scores-2022-01-01.csv.gz ...
+  exploitdb.csv
+  metasploit/modules_metadata_base.json
+  metasploit/module_dates.csv
 ```
 
 Откуда берутся данные: [docs/methodology.md](../docs/methodology.md).
