@@ -8,7 +8,8 @@
 * из совокупности исключаются уязвимости, уже внесённые в KEV до T:
   их приоритет очевиден, задача прогноза в том, чтобы найти ещё
   неизвестные эксплуатируемые;
-* признаки берутся на дату T (EPSS из файла за дату T);
+* признаки берутся на дату T (EPSS из файла за дату T, эксплойт
+  засчитывается, только если он появился раньше T);
 * разметка: уязвимость внесена в KEV в интервале [T, T + horizon).
 """
 
@@ -44,8 +45,14 @@ def build_snapshot(
     kev: pd.DataFrame,
     spec: SnapshotSpec,
     epss: pd.DataFrame | None = None,
+    exploits: dict[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     """Возвращает таблицу среза с колонкой `exploited` (0/1).
+
+    exploits: словарь {источник: таблица cve_id, exploit_date} с датой
+    первого публичного эксплойта, например {"exploitdb": ..., "metasploit": ...}.
+    Для каждого источника добавляется колонка exploit_<источник> (0/1),
+    и общая колонка has_exploit: был ли эксплойт хотя бы в одном источнике.
 
     Служебная статистика среза сохраняется в `df.attrs`.
     """
@@ -69,6 +76,15 @@ def build_snapshot(
     else:
         pop["epss"] = float("nan")
 
+    exploits = exploits or {}
+    for name, table in exploits.items():
+        first_date = pop["cve_id"].map(table.set_index("cve_id")["exploit_date"])
+        # Только эксплойты, появившиеся до даты среза: иначе подсмотрим в будущее
+        pop[f"exploit_{name}"] = (first_date < spec.t).astype(int)
+    if exploits:
+        cols = [f"exploit_{name}" for name in exploits]
+        pop["has_exploit"] = pop[cols].max(axis=1)
+
     pop = pop.reset_index(drop=True)
     pop.attrs.update(
         {
@@ -82,6 +98,7 @@ def build_snapshot(
             "share_missing_epss": float(pop["epss"].isna().mean()) if len(pop) else 1.0,
             "epss_available": epss is not None,
             "epss_model_version": epss.attrs.get("model_version") if epss is not None else None,
+            "exploit_sources": ", ".join(exploits) if exploits else "",
         }
     )
     return pop

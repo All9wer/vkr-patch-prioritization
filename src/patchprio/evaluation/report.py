@@ -92,6 +92,8 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
     result.budgets.to_csv(results_dir / "budget_metrics.csv", index=False)
     result.efforts.to_csv(results_dir / "effort_metrics.csv", index=False)
     result.policies.to_csv(results_dir / "policy_metrics.csv", index=False)
+    if not result.exploits.empty:
+        result.exploits.to_csv(results_dir / "exploit_stats.csv", index=False)
     plot_coverage(result, results_dir / "coverage_curve.png")
 
     snaps = result.snapshots
@@ -180,6 +182,26 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
             [[pol, _pct(r["effort_share"]), _pct(r["coverage"]), _pct(r["efficiency"])]
              for pol, r in p.iterrows()],
         ))
+        lines.append("")
+
+    if not result.exploits.empty:
+        ex = result.exploits.groupby("source", sort=False)[
+            ["share_attacked", "share_not_attacked"]].mean()
+        lines.append("## Публичные эксплойты на дату среза\n")
+        lines.append(
+            "Доля уязвимостей, для которых публичный эксплойт уже был на дату среза, "
+            "отдельно среди тех, что потом начали атаковать, и среди остальных. "
+            "Учитываются только эксплойты, появившиеся до даты среза. "
+            "Среднее по срезам.\n"
+        )
+        rows = []
+        for source, r in ex.iterrows():
+            ratio = (r["share_attacked"] / r["share_not_attacked"]
+                     if r["share_not_attacked"] else float("nan"))
+            rows.append([source, _pct(r["share_attacked"]), _pct(r["share_not_attacked"]),
+                         "н/д" if np.isnan(ratio) else f"в {ratio:.1f} раза"])
+        lines.append(_md_table(
+            ["Источник", "Среди атакованных", "Среди остальных", "Разница"], rows))
         lines.append("")
 
     lines.append("## Кривая покрытия\n")

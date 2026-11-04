@@ -14,6 +14,7 @@
 ## Что уже есть
 
 - скачивание данных: CISA KEV, NVD, EPSS
+- публичные эксплойты: Exploit-DB и Metasploit, с датой появления
 - срезы на четыре даты за 2022-2023 годы
 - сравнение базовых способов: случайный порядок, CVSS, EPSS
 - отчёт с таблицами и графиком
@@ -29,7 +30,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-patchprio fetch      # скачать данные
+patchprio fetch      # скачать данные (нужен git: история Metasploit)
 patchprio baseline   # посчитать и построить отчёт в experiments/results/
 pytest               # тесты
 ```
