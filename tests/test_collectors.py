@@ -13,7 +13,9 @@ NVD_ITEM = {
     "descriptions": [{"lang": "en", "value": "Apache Log4j2 JNDI features ..."}],
     "references": [{"url": "a"}, {"url": "b"}],
     "weaknesses": [
-        {"source": "nvd@nist.gov", "type": "Primary", "description": [{"lang": "en", "value": "CWE-917"}]}
+        {"source": "nvd@nist.gov", "type": "Primary", "description": [{"lang": "en", "value": "CWE-917"}]},
+        {"source": "other", "type": "Secondary",
+         "description": [{"lang": "en", "value": "CWE-502"}, {"lang": "en", "value": "CWE-917"}]},
     ],
     "metrics": {
         "cvssMetricV31": [
@@ -27,6 +29,9 @@ NVD_ITEM = {
                     "baseSeverity": "CRITICAL",
                     "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
                     "attackVector": "NETWORK",
+                    "confidentialityImpact": "HIGH",
+                    "integrityImpact": "HIGH",
+                    "availabilityImpact": "HIGH",
                 },
             },
         ],
@@ -41,6 +46,8 @@ def test_parse_nvd_prefers_primary_v31():
     assert row["cvss_version"] == "3.1"
     assert row["attack_vector"] == "NETWORK"
     assert row["cwe"] == "CWE-917"
+    assert row["cwes"] == "CWE-917;CWE-502"
+    assert row["conf_impact"] == "HIGH"
     assert row["n_references"] == 2
 
 

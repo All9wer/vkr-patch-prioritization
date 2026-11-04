@@ -50,17 +50,24 @@ def _pick_cvss(metrics: dict[str, Any]) -> dict[str, Any] | None:
             "attack_complexity": data.get("attackComplexity") or data.get("accessComplexity"),
             "privileges_required": data.get("privilegesRequired") or data.get("authentication"),
             "user_interaction": data.get("userInteraction"),
+            # Ущерб конфиденциальности, целостности и доступности:
+            # в CVSS 3.x HIGH/LOW/NONE, в 2.0 COMPLETE/PARTIAL/NONE, в 4.0 поля vuln*
+            "conf_impact": data.get("confidentialityImpact") or data.get("vulnConfidentialityImpact"),
+            "integ_impact": data.get("integrityImpact") or data.get("vulnIntegrityImpact"),
+            "avail_impact": data.get("availabilityImpact") or data.get("vulnAvailabilityImpact"),
         }
     return None
 
 
-def _pick_cwe(item: dict[str, Any]) -> str | None:
+def _pick_cwes(item: dict[str, Any]) -> list[str]:
+    """Все типы слабости CWE записи, без повторов, в порядке появления."""
+    found: list[str] = []
     for weakness in item.get("weaknesses") or []:
         for desc in weakness.get("description") or []:
             value = desc.get("value")
-            if value and value.startswith("CWE-"):
-                return value
-    return None
+            if value and value.startswith("CWE-") and value not in found:
+                found.append(value)
+    return found
 
 
 def _pick_description(item: dict[str, Any]) -> str | None:
@@ -76,11 +83,13 @@ def parse_nvd_item(item: dict[str, Any]) -> dict[str, Any] | None:
     if status == "Rejected":
         return None
 
+    cwes = _pick_cwes(item)
     row: dict[str, Any] = {
         "cve_id": item["id"].strip().upper(),
         "published": item.get("published"),
         "vuln_status": status,
-        "cwe": _pick_cwe(item),
+        "cwe": cwes[0] if cwes else None,
+        "cwes": ";".join(cwes),
         "description": _pick_description(item),
         "n_references": len(item.get("references") or []),
     }
