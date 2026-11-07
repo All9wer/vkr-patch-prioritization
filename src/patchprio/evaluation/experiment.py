@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from ..collectors import bdu as bdu_src
 from ..collectors import epss as epss_src
 from ..collectors import exploitdb as edb_src
 from ..collectors import kev as kev_src
@@ -43,6 +44,8 @@ class ExperimentResult:
     exploits: pd.DataFrame = field(default_factory=pd.DataFrame)
     consequences: pd.DataFrame = field(default_factory=pd.DataFrame)
     consequence_sources: pd.DataFrame = field(default_factory=pd.DataFrame)
+    bdu: pd.DataFrame = field(default_factory=pd.DataFrame)
+    bdu_summary: dict = field(default_factory=dict)
     curves: dict[str, list[tuple[np.ndarray, np.ndarray]]] = field(default_factory=dict)
     kev_version: str | None = None
     infra_description: str | None = None
@@ -168,6 +171,48 @@ def consequence_stats(df: pd.DataFrame) -> tuple[list[dict], list[dict]]:
     return by_type, by_source
 
 
+def bdu_stats(df: pd.DataFrame, bdu: pd.DataFrame) -> list[dict]:
+    """Покрытие среза БДУ ФСТЭК: отдельно для атакованных и остальных.
+
+    Только для описания источника, в сортировке не участвует:
+    отметка об эксплойте в БДУ отражает текущее состояние.
+    """
+    t = pd.Timestamp(df.attrs["snapshot"])
+    m = df[["cve_id", "exploited"]].merge(bdu, on="cve_id", how="left")
+    checks = {
+        "Описана в БДУ (сейчас)": m["bdu_first_published"].notna(),
+        "Описана в БДУ на дату среза": m["bdu_first_published"] < t,
+        "Отметка об эксплойте в БДУ (сейчас)": m["bdu_exploit_now"].fillna(0) == 1,
+    }
+    attacked = m["exploited"] == 1
+    return [
+        {
+            "snapshot": df.attrs["snapshot"],
+            "check": name,
+            "share_attacked": float(mask[attacked].mean()) if attacked.any() else np.nan,
+            "share_not_attacked": float(mask[~attacked].mean()) if (~attacked).any() else np.nan,
+        }
+        for name, mask in checks.items()
+    ]
+
+
+def load_bdu(cfg: ExperimentConfig) -> tuple[pd.DataFrame | None, dict]:
+    """Сведения БДУ по CVE и общая статистика выгрузки."""
+    raw = cfg.raw_dir
+    if not (bdu_src.xlsx_path(raw).exists() or bdu_src.cache_path(raw).exists()):
+        log.warning("нет выгрузки БДУ ФСТЭК (%s)", bdu_src.xlsx_path(raw))
+        return None, {}
+    records = bdu_src.load_bdu_records(raw)
+    no_cve = records["cve_ids"].fillna("") == ""
+    summary = {
+        "records": int(len(records)),
+        "without_cve": int(no_cve.sum()),
+        "top_vendors_without_cve": records.loc[no_cve, "vendor"].fillna("не указан")
+        .value_counts().head(10).to_dict(),
+    }
+    return bdu_src.bdu_by_cve(records), summary
+
+
 def load_exploits(cfg: ExperimentConfig) -> dict[str, pd.DataFrame]:
     """Загружает даты эксплойтов из тех источников, что скачаны."""
     raw = cfg.raw_dir
@@ -207,6 +252,7 @@ def run_experiment(cfg: ExperimentConfig, rankers: list[Ranker] | None = None) -
     nvd, kev = load_sources(cfg)
     log.info("загружено записей NVD: %d, записей KEV: %d", len(nvd), len(kev))
     exploits = load_exploits(cfg)
+    bdu, bdu_summary = load_bdu(cfg)
     for name, table in exploits.items():
         log.info("эксплойты %s: %d CVE", name, len(table))
 
@@ -217,6 +263,7 @@ def run_experiment(cfg: ExperimentConfig, rankers: list[Ranker] | None = None) -
         policies=pd.DataFrame(),
         kev_version=kev.attrs.get("catalog_version"),
         infra_description=cfg.infra.describe(),
+        bdu_summary=bdu_summary,
     )
 
     for day in cfg.snapshots:
@@ -236,6 +283,8 @@ def run_experiment(cfg: ExperimentConfig, rankers: list[Ranker] | None = None) -
         stats = exploit_stats(df)
         if stats:
             result.exploits = pd.concat([result.exploits, pd.DataFrame(stats)], ignore_index=True)
+        if bdu is not None:
+            result.bdu = pd.concat([result.bdu, pd.DataFrame(bdu_stats(df, bdu))], ignore_index=True)
         by_type, by_source = consequence_stats(df)
         if by_type:
             result.consequences = pd.concat(

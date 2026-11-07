@@ -107,6 +107,8 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
     result.policies.to_csv(results_dir / "policy_metrics.csv", index=False)
     if not result.exploits.empty:
         result.exploits.to_csv(results_dir / "exploit_stats.csv", index=False)
+    if not result.bdu.empty:
+        result.bdu.to_csv(results_dir / "bdu_stats.csv", index=False)
     if not result.consequences.empty:
         result.consequences.to_csv(results_dir / "consequence_stats.csv", index=False)
     plot_coverage(result, results_dir / "coverage_curve.png")
@@ -250,6 +252,37 @@ def write_report(result: ExperimentResult, results_dir: Path) -> Path:
         ]
         lines.append(_md_table(["Последствие", "H", "Среди атакованных", "Среди остальных"], rows))
         lines.append("")
+
+    if not result.bdu.empty:
+        bs = result.bdu_summary
+        b = result.bdu.groupby("check", sort=False)[["share_attacked", "share_not_attacked"]].mean()
+        lines.append("## БДУ ФСТЭК\n")
+        lines.append(
+            "Насколько уязвимости среза описаны в Банке данных угроз ФСТЭК. Только для "
+            "описания источника: в сортировке БДУ не участвует, потому что отметка об "
+            "эксплойте отражает текущее состояние, а не состояние на дату среза. "
+            "Среднее по срезам.\n"
+        )
+        lines.append(_md_table(
+            ["Показатель", "Среди атакованных", "Среди остальных"],
+            [[name, _pct(r["share_attacked"]), _pct(r["share_not_attacked"])] for name, r in b.iterrows()],
+        ))
+        lines.append("")
+        if bs:
+            total = f"{bs['records']:,}".replace(",", " ")
+            without = f"{bs['without_cve']:,}".replace(",", " ")
+            lines.append(
+                f"Всего записей в выгрузке БДУ: {total}, из них без ссылки на CVE: "
+                f"{without} ({bs['without_cve'] / bs['records'] * 100:.1f}%). "
+                "Такие уязвимости отсутствуют в NVD, и оценить их можно только по БДУ.\n"
+            )
+            if bs.get("top_vendors_without_cve"):
+                lines.append("Вендоры с наибольшим числом записей без CVE:\n")
+                lines.append(_md_table(
+                    ["Вендор", "Записей"],
+                    [[str(v), str(n)] for v, n in bs["top_vendors_without_cve"].items()],
+                ))
+                lines.append("")
 
     lines.append("## Кривая покрытия\n")
     lines.append("![Кривая покрытия](coverage_curve.png)\n")

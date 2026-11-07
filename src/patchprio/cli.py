@@ -10,6 +10,7 @@ import argparse
 import logging
 import sys
 
+from .collectors import bdu as bdu_src
 from .collectors import epss as epss_src
 from .collectors import exploitdb as edb_src
 from .collectors import kev as kev_src
@@ -17,7 +18,7 @@ from .collectors import metasploit as msf_src
 from .collectors import nvd as nvd_src
 from .config import load_config
 
-SOURCES = ("kev", "nvd", "epss", "exploitdb", "metasploit")
+SOURCES = ("kev", "nvd", "epss", "exploitdb", "metasploit", "bdu")
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
@@ -61,6 +62,13 @@ def cmd_fetch(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001
             logging.error("Metasploit: %s", exc)
             failed.append("metasploit")
+
+    if "bdu" in sources:
+        try:
+            bdu_src.fetch_bdu(cfg.raw_dir, force=args.force)
+        except Exception as exc:  # noqa: BLE001
+            logging.error("БДУ ФСТЭК: %s", exc)
+            failed.append("bdu")
 
     if failed:
         logging.error("не скачано: %s", ", ".join(failed))
